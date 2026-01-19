@@ -1,0 +1,179 @@
+--Вывести всех клиентов из города Бишкек.
+SELECT full_name, city 
+FROM clients 
+WHERE city = 'Бишкек'
+
+--Показать имя клиента и все его кредиты (сумма и статус).
+
+SELECT c.full_name, cr.credit_amount, cr.status 
+FROM clients c
+JOIN credits cr ON cr.client_id = c.client_id 
+
+--Найти все переводы, где сумма больше 10 000, с указанием имени отправителя и получателя.
+
+SELECT t.receiver_id, t.sender_id, t.amount, c.full_name 
+FROM transfers t 
+JOIN clients c  ON c.client_id = t.sender_id 
+WHERE t.amount > 10000
+
+
+--JOIN:
+
+--Вывести клиентов, у которых есть депозиты, но нет кредитов. 
+
+SELECT DISTINCT c.client_id, c.full_name
+FROM clients c
+JOIN deposits d ON c.client_id = d.client_id
+LEFT JOIN credits cr ON c.client_id = cr.client_id
+WHERE cr.client_id IS NULL;
+
+
+
+--Найти всех клиентов, которые отправляли переводы, и количество этих переводов. 
+
+SELECT COUNT(transfer_id) 
+FROM clients c 
+JOIN transfers t  ON c.client_id = t.sender_id   
+
+--Показать клиента и сумму всех его переводов (как отправитель).
+
+SELECT t.sender_id, t.amount, c.full_name
+FROM clients c 
+JOIN  transfers t ON c.client_id = t.sender_id  
+
+
+
+--Подзапросы:
+--Вывести клиентов, у которых сумма кредитов больше 300 000. 
+
+
+SELECT c.full_name
+FROM clients c
+WHERE (
+    SELECT SUM(cr.credit_amount) 
+    FROM credits cr
+    WHERE cr.client_id = c.client_id
+) > 300000;
+
+
+
+--Найти максимальный депозит для каждого клиента.
+ 
+SELECT 
+    c.full_name,
+    (
+        SELECT MAX(d.deposit_amount)
+        FROM deposits d
+        WHERE d.client_id = c.client_id
+    ) AS max_deposit
+FROM clients c;
+
+--Определить клиентов, которые отправили переводы выше среднего перевода по банку. 
+
+SELECT c.full_name
+FROM clients c
+WHERE (
+    SELECT AVG(t.amount)
+    FROM transfers t
+    WHERE t.sender_id = c.client_id
+) > (
+    SELECT AVG(t2.amount)
+    FROM transfers t2
+);
+
+
+--Группировка и агрегаты:
+--Для каждого города посчитать:
+--количество клиентов,
+--общую сумму кредитов. 
+
+SELECT 
+  c.city, 
+  COUNT(DISTINCT c.client_id) AS clients_count,
+  SUM(cr.credit_amount)  AS total_sum
+FROM clients c
+LEFT JOIN credits cr ON c.client_id = cr.client_id
+GROUP BY c.city;
+
+
+--Найти 5 клиентов с наибольшей суммой депозитов.
+
+SELECT 
+  c.client_id, 
+  SUM(d.deposit_amount) AS total_deposit  
+FROM clients c 
+JOIN deposits d ON c.client_id = d.client_id
+GROUP BY c.full_name 
+ORDER BY d.deposit_amount DESC 
+LIMIT 5; 
+
+--VIEW:
+--Создать представление client_summary, где указать:
+--id клиента,
+--имя,
+--количество кредитов,
+--сумму депозитов,
+--количество переводов. 
+
+CREATE VIEW client_summary AS
+SELECT
+    c.client_id,
+    c.full_name,
+    COUNT(DISTINCT cr.credit_id) AS credits_count,
+    SUM(d.deposit_amount) AS total_deposit,
+    COUNT(DISTINCT t.transfer_id) AS transfers_count
+FROM clients c
+LEFT JOIN credits cr ON c.client_id = cr.client_id
+LEFT JOIN deposits d ON c.client_id = d.client_id
+LEFT JOIN transfers t ON c.client_id = t.sender_id
+GROUP BY c.client_id, c.full_name;
+
+
+
+--Оконные функции
+--Пронумеровать кредиты каждого клиента по дате (от последнего к первому). 
+
+SELECT 
+    cr.credit_id,
+    cr.client_id,
+    cr.credit_amount,
+    cr.credit_date,
+    ROW_NUMBER() OVER (
+        PARTITION BY cr.client_id
+        ORDER BY cr.credit_date DESC
+    ) AS credit_num
+FROM credits cr;
+
+--Для каждого клиента выбрать последний перевод. 
+
+SELECT *
+FROM (
+    SELECT 
+        t.transfer_id,
+        t.sender_id,
+        t.amount,''
+        t.transfer_date,
+        ROW_NUMBER() OVER (
+            PARTITION BY t.sender_id
+            ORDER BY t.transfer_date DESC
+        ) AS rn
+    FROM transfers t
+) sub
+WHERE rn = 1;
+
+--Найти топ-3 клиентов с наибольшими суммами кредитов, используя оконную функцию RANK().
+
+SELECT *
+FROM (
+    SELECT 
+        c.client_id,
+        c.full_name,
+        SUM(cr.credit_amount) AS total_credit,
+        RANK() OVER (
+            ORDER BY SUM(cr.credit_amount) DESC
+        ) AS rnk
+    FROM clients c
+    JOIN credits cr ON c.client_id = cr.client_id
+    GROUP BY c.client_id, c.full_name
+) sub
+WHERE rnk <= 3;
