@@ -1,0 +1,113 @@
+-- 1️⃣ Общие показатели заказов
+WITH
+OrderStats AS (
+    SELECT 
+        o.status,
+        COUNT(*) AS order_count,
+        ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (), 2) AS percent_total
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.customer_id
+    JOIN order_items oi ON o.order_id = oi.order_id
+    JOIN products p ON oi.product_id = p.product_id
+    WHERE o.status IN ('Completed', 'Cancelled', 'Returned')
+    GROUP BY o.status
+),
+
+-- 2️⃣ Финансовые метрики по городам и категориям
+FinanceMetrics AS (
+    SELECT 
+        c.city,
+        p.category,
+        SUM(oi.quantity * p.price) AS gross_amount,
+        SUM(oi.quantity * p.price * (1 - oi.discount)) AS net_amount
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.customer_id
+    JOIN order_items oi ON o.order_id = oi.order_id
+    JOIN products p ON oi.product_id = p.product_id
+    GROUP BY c.city, p.category
+),
+
+-- 3️⃣ Топ-5 клиентов по выручке
+TopCustomers AS (
+    SELECT 
+        c.customer_id,
+        c.full_name,
+        SUM(oi.quantity * p.price * (1 - oi.discount)) AS total_revenue
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.customer_id
+    JOIN order_items oi ON o.order_id = oi.order_id
+    JOIN products p ON oi.product_id = p.product_id
+    GROUP BY c.customer_id, c.full_name
+    ORDER BY total_revenue DESC
+    LIMIT 5
+),
+
+-- 4️⃣ Поведение покупателей: выручка по способам оплаты
+PaymentRevenue AS (
+    SELECT 
+        o.payment_method,
+        SUM(oi.quantity * p.price * (1 - oi.discount)) AS net_amount
+    FROM orders o
+    JOIN order_items oi ON o.order_id = oi.order_id
+    JOIN products p ON oi.product_id = p.product_id
+    GROUP BY o.payment_method
+),
+
+-- 5️⃣ Средняя скидка по категориям
+CategoryDiscount AS (
+    SELECT 
+        p.category,
+        ROUND(AVG(oi.discount) * 100, 2) AS avg_discount_percent
+    FROM order_items oi
+    JOIN products p ON oi.product_id = p.product_id
+    GROUP BY p.category
+),
+
+-- 6️⃣ Средний чек (AOV) по городам
+CityAOV AS (
+    SELECT 
+        c.city,
+        ROUND(SUM(oi.quantity * p.price * (1 - oi.discount)) / COUNT(DISTINCT o.order_id), 2) AS avg_order_value
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.customer_id
+    JOIN order_items oi ON o.order_id = oi.order_id
+    JOIN products p ON oi.product_id = p.product_id
+    GROUP BY c.city
+),
+
+-- 7️⃣ Динамика продаж по месяцам (2025 год)
+MonthlySales AS (
+    SELECT 
+        strftime('%Y-%m', o.order_date) AS month,
+        SUM(oi.quantity * p.price * (1 - oi.discount)) AS net_amount
+    FROM orders o
+    JOIN order_items oi ON o.order_id = oi.order_id
+    JOIN products p ON oi.product_id = p.product_id
+    WHERE o.status = 'Completed'
+      AND strftime('%Y', o.order_date) = '2025'
+    GROUP BY month
+),
+
+-- 8️⃣ Продажи по дням недели
+WeekdaySales AS (
+    SELECT 
+        strftime('%w', o.order_date) AS weekday,
+        SUM(oi.quantity * p.price * (1 - oi.discount)) AS net_amount
+    FROM orders o
+    JOIN order_items oi ON o.order_id = oi.order_id
+    JOIN products p ON oi.product_id = p.product_id
+    WHERE o.status = 'Completed'
+    GROUP BY weekday
+),
+
+-- 9️⃣ Сравнение Card vs Online
+PaymentCompare AS (
+    SELECT 
+        o.payment_method,
+        SUM(oi.quantity * p.price * (1 - oi.discount)) AS net_amount
+    FROM orders o
+    JOIN order_items oi ON o.order_id = oi.order_id
+    JOIN products p ON oi.product_id = p.product_id
+    WHERE o.payment_method IN ('Card', 'Online')
+    GROUP BY o.payment_method
+),
