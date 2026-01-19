@@ -1,0 +1,52 @@
+--Найти список всех клиентов и их счета (имя клиента, номер счёта, баланс).
+
+SELECT c.full_name, a.account_number, a.balance
+FROM clients c
+JOIN accounts a ON a.client_id = c.client_id 
+
+--Вывести все транзакции с именем клиента и номером его счёта. 
+
+SELECT c.full_name, a.account_number, t.amount 
+FROM transactions t 
+JOIN accounts a ON a.account_id  = t.account_id 
+JOIN clients c ON c.client_id = a.client_id 
+
+--Задач--3 (ROW_NUMBER)
+--Нумеровать все транзакции каждого клиента по 
+--дате (от самой ранней к поздней).
+
+SELECT 
+    t.transaction_id,
+    c.client_id,
+    t.transaction_date,
+    ROW_NUMBER() OVER(
+        PARTITION BY c.client_id
+        ORDER BY t.transaction_date ASC
+    ) AS transaction_num
+FROM transactions t
+JOIN accounts a ON a.account_id = t.account_id
+JOIN clients c ON c.client_id = a.client_id;
+
+
+
+--Задача 4 (ROW_NUMBER + фильтрация)
+
+--Найти последнюю транзакцию каждого клиента.
+
+SELECT *
+FROM (
+    SELECT
+        c.client_id,
+        c.full_name,
+        t.transaction_id,
+        t.amount,
+        t.transaction_date,
+        ROW_NUMBER() OVER (
+            PARTITION BY c.client_id
+            ORDER BY t.transaction_date DESC
+        ) AS rn
+    FROM clients c
+    JOIN accounts a ON a.client_id = c.client_id
+    JOIN transactions t ON t.account_id = a.account_id
+) sub
+WHERE rn = 1; 
